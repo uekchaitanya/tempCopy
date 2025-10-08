@@ -371,10 +371,13 @@
                 </div>
 
                 <div class="input-area">
-                    <form class="input-form" id="queryForm">
-                        <input type="text" id="query" name="query" placeholder="Type your query or click Run Analysis..." autocomplete="off">
-                        <button type="submit" class="submit-btn">Run Analysis</button>
-                    </form>
+                    <div class="quick-actions">
+                        <button class="action-btn" data-action="outliers">🔍 Find me the Outliers</button>
+                        <button class="action-btn" data-action="summary">📊 Show Summary Statistics</button>
+                        <button class="action-btn" data-action="top10">🔝 Show Top 10 Flagged Headers</button>
+                        <button class="action-btn" data-action="explain">📖 Explain Detection Rules</button>
+                        <button class="action-btn" data-action="analyze">⚡ Run Full Analysis</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -383,8 +386,15 @@
     <script>
         const messagesDiv = document.getElementById('messages');
         const loadingDiv = document.getElementById('loading');
-        const queryForm = document.getElementById('queryForm');
-        const queryInput = document.getElementById('query');
+        const actionButtons = document.querySelectorAll('.action-btn');
+
+        function formatNumber(num) {
+            if (num === null || num === undefined) return 'N/A';
+            return new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(num);
+        }
 
         function addMessage(content, isUser = false) {
             const messageDiv = document.createElement('div');
@@ -404,65 +414,80 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        queryForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const query = queryInput.value.trim();
-            const formData = new FormData(document.getElementById('configForm'));
-            
-            // Add query to form data
-            if (query) {
-                formData.append('query', query);
-                addMessage(query, true);
-            } else {
-                addMessage('Running outlier analysis with current parameters...', true);
-            }
-            
-            queryInput.value = '';
-            loadingDiv.classList.add('active');
-            
-            try {
-                const response = await fetch('/outlierv1', {
-                    method: 'POST',
-                    body: formData
-                });
+        // Handle action button clicks
+        actionButtons.forEach(button => {
+            button.addEventListener('click', async () => {
+                const action = button.getAttribute('data-action');
+                const actionText = button.textContent.trim();
                 
-                const data = await response.json();
-                loadingDiv.classList.remove('active');
+                addMessage(actionText, true);
                 
-                if (data.success) {
-                    let resultHtml = `<strong>Analysis Complete</strong><br><br>`;
-                    resultHtml += `Center: <strong>${data.center}</strong><br>`;
-                    resultHtml += `Dates Analyzed: ${data.dates_analyzed || 'N/A'}<br>`;
-                    resultHtml += `Flagged Headers: <strong>${data.flagged_count || 0}</strong><br>`;
-                    resultHtml += `Total Headers: ${data.total_count || 0}<br><br>`;
+                const formData = new FormData(document.getElementById('configForm'));
+                formData.append('action', action);
+                
+                loadingDiv.classList.add('active');
+                
+                try {
+                    const response = await fetch('/outlierv1', {
+                        method: 'POST',
+                        body: formData
+                    });
                     
-                    if (data.top_outliers && data.top_outliers.length > 0) {
-                        resultHtml += `<div class="result-table"><table>`;
-                        resultHtml += `<tr><th>Header</th><th>Delta</th><th>% Change</th><th>Z-Score</th><th>Flag</th></tr>`;
+                    const data = await response.json();
+                    loadingDiv.classList.remove('active');
+                    
+                    if (data.success) {
+                        let resultHtml = `<strong>✅ Analysis Complete</strong><br><br>`;
+                        resultHtml += `<strong>Center:</strong> ${data.center}<br>`;
+                        resultHtml += `<strong>Dates Analyzed:</strong> ${data.dates_analyzed || 'Latest 2 business dates'}<br>`;
+                        resultHtml += `<strong>Total Headers:</strong> ${data.total_count || 0}<br>`;
+                        resultHtml += `<strong>Flagged Outliers:</strong> <span style="color: #dc2626; font-weight: bold;">${data.flagged_count || 0}</span><br><br>`;
                         
-                        data.top_outliers.slice(0, 10).forEach(row => {
-                            resultHtml += `<tr>`;
-                            resultHtml += `<td>${row.header}</td>`;
-                            resultHtml += `<td>${row.delta?.toFixed(2) || 'N/A'}</td>`;
-                            resultHtml += `<td>${row.pct_change ? (row.pct_change * 100).toFixed(2) + '%' : 'N/A'}</td>`;
-                            resultHtml += `<td>${row.z_score?.toFixed(2) || 'N/A'}</td>`;
-                            resultHtml += `<td class="${row.flag ? 'flag-true' : ''}">${row.flag ? '⚠️ Yes' : 'No'}</td>`;
-                            resultHtml += `</tr>`;
-                        });
+                        // Add download button
+                        if (data.csv_url) {
+                            resultHtml += `<a href="${data.csv_url}" class="download-btn" download>📥 Download Full Results CSV</a><br><br>`;
+                        }
                         
-                        resultHtml += `</table></div>`;
+                        if (data.top_outliers && data.top_outliers.length > 0) {
+                            resultHtml += `<strong>Top ${Math.min(data.top_outliers.length, 20)} Outliers:</strong>`;
+                            resultHtml += `<div class="result-table"><table>`;
+                            resultHtml += `<thead><tr>`;
+                            resultHtml += `<th>Header</th>`;
+                            resultHtml += `<th>Applied (t-1)</th>`;
+                            resultHtml += `<th>Applied (t)</th>`;
+                            resultHtml += `<th>Delta (Δ)</th>`;
+                            resultHtml += `<th>% Change</th>`;
+                            resultHtml += `<th>Z-Score</th>`;
+                            resultHtml += `<th>Flag</th>`;
+                            resultHtml += `</tr></thead><tbody>`;
+                            
+                            data.top_outliers.slice(0, 20).forEach(row => {
+                                const isFlagged = row.flag === true || row.flag === 'true' || row.flag === '✓';
+                                resultHtml += `<tr ${isFlagged ? 'style="background-color: #fee2e2;"' : ''}>`;
+                                resultHtml += `<td><strong>${row.header || 'N/A'}</strong></td>`;
+                                resultHtml += `<td>${row.applied_t1 ? formatNumber(row.applied_t1) : 'N/A'}</td>`;
+                                resultHtml += `<td>${row.applied_t ? formatNumber(row.applied_t) : 'N/A'}</td>`;
+                                resultHtml += `<td>${row.delta ? formatNumber(row.delta) : 'N/A'}</td>`;
+                                resultHtml += `<td>${row.pct_change ? (row.pct_change * 100).toFixed(2) + '%' : 'N/A'}</td>`;
+                                resultHtml += `<td>${row.z_score ? row.z_score.toFixed(2) : 'N/A'}</td>`;
+                                resultHtml += `<td class="${isFlagged ? 'flag-true' : ''}">${isFlagged ? '⚠️ Yes' : 'No'}</td>`;
+                                resultHtml += `</tr>`;
+                            });
+                            
+                            resultHtml += `</tbody></table></div>`;
+                        } else {
+                            resultHtml += `<p style="color: #10b981;">✓ No significant outliers detected with current thresholds.</p>`;
+                        }
+                        
+                        addMessage(resultHtml);
+                    } else {
+                        addMessage(`<strong>❌ Error:</strong> ${data.error || 'Unknown error occurred'}`, false);
                     }
-                    
-                    resultHtml += `<br>Results exported to: <code>${data.output_file}</code>`;
-                    addMessage(resultHtml);
-                } else {
-                    addMessage(`<strong>Error:</strong> ${data.error || 'Unknown error occurred'}`, false);
+                } catch (error) {
+                    loadingDiv.classList.remove('active');
+                    addMessage(`<strong>Error:</strong> ${error.message}`, false);
                 }
-            } catch (error) {
-                loadingDiv.classList.remove('active');
-                addMessage(`<strong>Error:</strong> ${error.message}`, false);
-            }
+            });
         });
     </script>
 </body>
