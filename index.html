@@ -384,9 +384,16 @@
     </div>
 
     <script>
+    // Wait for DOM to fully load before running script
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🚀 DOM loaded, script starting');
+        
         const messagesDiv = document.getElementById('messages');
         const loadingDiv = document.getElementById('loading');
         const actionButtons = document.querySelectorAll('.action-btn');
+        
+        console.log('Found buttons:', actionButtons.length);
+        console.log('Buttons:', actionButtons);
 
         function formatNumber(num) {
             if (num === null || num === undefined) return 'N/A';
@@ -414,26 +421,51 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
+        // Only attach listeners if buttons exist
+        if (actionButtons.length === 0) {
+            console.error('❌ No action buttons found! Check your HTML.');
+            return;
+        }
+
         // Handle action button clicks
-        actionButtons.forEach(button => {
-            button.addEventListener('click', async () => {
+        actionButtons.forEach((button, index) => {
+            console.log(`Attaching listener to button ${index}:`, button.textContent.trim());
+            
+            button.addEventListener('click', async (e) => {
+                e.preventDefault(); // Prevent form submission
+                console.log('🔘 Button clicked!', e.target);
+                
                 const action = button.getAttribute('data-action');
                 const actionText = button.textContent.trim();
+                
+                console.log('Action:', action);
+                console.log('Action Text:', actionText);
                 
                 addMessage(actionText, true);
                 
                 const formData = new FormData(document.getElementById('configForm'));
                 formData.append('action', action);
                 
+                console.log('FormData entries:');
+                for (let pair of formData.entries()) {
+                    console.log(pair[0] + ': ' + pair[1]);
+                }
+                
                 loadingDiv.classList.add('active');
                 
                 try {
+                    console.log('Sending request to /outlierv1...');
+                    
                     const response = await fetch('/outlierv1', {
                         method: 'POST',
                         body: formData
                     });
                     
+                    console.log('Response status:', response.status);
+                    
                     const data = await response.json();
+                    console.log('Response data:', data);
+                    
                     loadingDiv.classList.remove('active');
                     
                     if (data.success) {
@@ -484,11 +516,15 @@
                         addMessage(`<strong>❌ Error:</strong> ${data.error || 'Unknown error occurred'}`, false);
                     }
                 } catch (error) {
+                    console.error('❌ Error caught:', error);
                     loadingDiv.classList.remove('active');
-                    addMessage(`<strong>Error:</strong> ${error.message}`, false);
+                    addMessage(`<strong>❌ Error:</strong> ${error.message}`, false);
                 }
             });
         });
-    </script>
+        
+        console.log('✅ All event listeners attached');
+    });
+</script>
 </body>
 </html>
