@@ -1,7 +1,27 @@
 from flask import render_template, request, jsonify
 from app import app
-from v1.core import MarginBot
 import os
+import sys
+from pathlib import Path
+
+# Fix import path - add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Now import MarginBot
+try:
+    from v1.core import MarginBot
+except ImportError:
+    # If v1 is inside app directory
+    try:
+        from app.v1.core import MarginBot
+    except ImportError:
+        raise ImportError(
+            "Cannot find MarginBot. Please ensure:\n"
+            "1. v1/__init__.py exists\n"
+            "2. v1/core.py contains MarginBot class\n"
+            "3. v1 directory is in the correct location"
+        )
 
 @app.route('/')
 def index():
@@ -23,20 +43,20 @@ def outlierv1():
         })
     
     try:
+        # Hardcoded paths for MVP
+        csv_path = 'data/sample_summary.csv'
+        out_csv = 'out/outliers_rules.csv'
+        
         # Extract parameters from form data
         mode = request.form.get('mode', 'rules')
         center = request.form.get('center', 'NPM')
-        header = request.form.get('header', None)  # Optional
-        csv_path = request.form.get('csv_path', 'data/sample_summary.csv')
-        out_csv = request.form.get('out_csv', 'out/outliers_rules.csv')
+        action = request.form.get('action', 'analyze')  # Get the action type
         
         # Advanced parameters
         abs_threshold = float(request.form.get('abs_threshold', 5000000))
         pct_threshold = float(request.form.get('pct_threshold', 0.25))
         z_threshold = float(request.form.get('z_threshold', 3.0))
         top_n = int(request.form.get('top_n', 20))
-        
-        query = request.form.get('query', '')
         
         # Validate CSV path exists
         if not os.path.exists(csv_path):
@@ -53,7 +73,7 @@ def outlierv1():
         # Initialize bot
         bot = MarginBot()
         
-        # Run outlier detection based on mode
+        # Run outlier detection based on mode and action
         if mode == 'rules':
             # Call outliers method with parameters
             result = bot.outliers(
@@ -65,15 +85,6 @@ def outlierv1():
                 top_n=top_n,
                 out_csv=out_csv
             )
-            
-            # If header is specified, also get explanation
-            explanation = None
-            if header:
-                explanation = bot.explain_summary(
-                    csv_path=csv_path,
-                    center=center,
-                    header=header
-                )
         
         elif mode == 'ai':
             # Placeholder for AI-based mode
@@ -88,14 +99,14 @@ def outlierv1():
                 'error': f'Invalid mode: {mode}'
             }), 400
         
-        # Parse results (assumes bot returns structured data)
-        # Adjust this based on your actual MarginBot return structure
+        # Parse results based on action
         response_data = {
             'success': True,
             'mode': mode,
             'center': center,
             'output_file': out_csv,
-            'query': query
+            'action': action,
+            'csv_url': f'/download/{os.path.basename(out_csv)}'  # Add download URL
         }
         
         # Add result data if available
@@ -107,15 +118,51 @@ def outlierv1():
                 'top_outliers': result.get('top_outliers', [])
             })
         elif isinstance(result, list):
+            # Convert list to structured format
+            top_outliers = []
+            for r in result[:top_n]:
+                if isinstance(r, dict):
+                    top_outliers.append(r)
+                else:
+                    # If result is not dict, try to parse it
+                    top_outliers.append({'data': str(r)})
+            
             response_data.update({
-                'top_outliers': result[:top_n],
+                'top_outliers': top_outliers,
                 'total_count': len(result),
-                'flagged_count': sum(1 for r in result if r.get('flag'))
+                'flagged_count': sum(1 for r in result if isinstance(r, dict) and r.get('flag'))
             })
         
-        # Add explanation if header was specified
-        if header and explanation:
-            response_data['explanation'] = explanation
+        # If MarginBot returns raw data, read the CSV and parse it
+        if os.path.exists(out_csv):
+            import csv
+            with open(out_csv, 'r') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+                
+                # Get summary info
+                if not response_data.get('total_count'):
+                    response_data['total_count'] = len(rows)
+                
+                if not response_data.get('flagged_count'):
+                    flagged = sum(1 for row in rows if row.get('FLAG', '').lower() in ['true', '1', 'yes', '✓'])
+                    response_data['flagged_count'] = flagged
+                
+                # Get top outliers if not already set
+                if not response_data.get('top_outliers'):
+                    top_outliers = []
+                    for row in rows[:top_n]:
+                        outlier = {
+                            'header': row.get('HEADER', row.get('header_account_id', 'N/A')),
+                            'applied_t1': float(row.get('APPLIED_t1', 0)) if row.get('APPLIED_t1') else None,
+                            'applied_t': float(row.get('APPLIED_t', 0)) if row.get('APPLIED_t') else None,
+                            'delta': float(row.get('Δ', row.get('delta', 0))) if row.get('Δ', row.get('delta')) else None,
+                            'pct_change': float(row.get('%Δ', row.get('pct_change', 0))) if row.get('%Δ', row.get('pct_change')) else None,
+                            'z_score': float(row.get('Z', row.get('z_score', 0))) if row.get('Z', row.get('z_score')) else None,
+                            'flag': row.get('FLAG', row.get('flag', 'false')).lower() in ['true', '1', 'yes', '✓']
+                        }
+                        top_outliers.append(outlier)
+                    response_data['top_outliers'] = top_outliers
         
         return jsonify(response_data)
     
@@ -126,6 +173,9 @@ def outlierv1():
         }), 400
     
     except Exception as e:
+        import traceback
+        print("Error traceback:")
+        print(traceback.format_exc())
         return jsonify({
             'success': False,
             'error': f'Internal error: {str(e)}'
@@ -177,3 +227,37 @@ def outlier():
     Redirects to new endpoint
     """
     return outlierv1()
+
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    """
+    Download CSV file from output directory
+    """
+    try:
+        from flask import send_from_directory
+        
+        # Security: Only allow downloads from 'out' directory
+        safe_filename = os.path.basename(filename)  # Prevent directory traversal
+        output_dir = os.path.join(os.getcwd(), 'out')
+        
+        file_path = os.path.join(output_dir, safe_filename)
+        
+        if not os.path.exists(file_path):
+            return jsonify({
+                'success': False,
+                'error': 'File not found'
+            }), 404
+        
+        return send_from_directory(
+            output_dir,
+            safe_filename,
+            as_attachment=True,
+            download_name=safe_filename
+        )
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
