@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligent Margin Query Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px 32px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 350px;
+            background: #f7f9fc;
+            border-right: 1px solid #e1e8ed;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #344054;
+            margin-bottom: 8px;
+        }
+
+        .form-group select,
+        .form-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d0d7de;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group .help-text {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .advanced-params {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 12px;
+        }
+
+        .advanced-params h4 {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #344054;
+        }
+
+        .param-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar {
+            background: #667eea;
+            color: white;
+        }
+
+        .message.bot .message-avatar {
+            background: #10b981;
+            color: white;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .message.user .message-content {
+            background: #667eea;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.bot .message-content {
+            background: #f3f4f6;
+            color: #1f2937;
+            border-bottom-left-radius: 4px;
+        }
+
+        .result-table {
+            margin-top: 12px;
+            overflow-x: auto;
+        }
+
+        .result-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .result-table th,
+        .result-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .result-table th {
+            background: #f9fafb;
+            font-weight: 600;
+        }
+
+        .flag-true {
+            color: #dc2626;
+            font-weight: 600;
+        }
+
+        .input-area {
+            padding: 20px 24px;
+            background: #f9fafb;
+            border-top: 1px solid #e1e8ed;
+        }
+
+        .input-form {
+            display: flex;
+            gap: 12px;
+        }
+
+        .input-form input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #d0d7de;
+            border-radius: 24px;
+            font-size: 14px;
+        }
+
+        .input-form input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #6b7280;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .loader {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Intelligent Margin Query Interface</h1>
+            <p>Rules-Based Outlier Detection | Summary Only</p>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <form id="configForm">
+                    <div class="form-group">
+                        <label for="mode">Detection Mode</label>
+                        <select id="mode" name="mode" required>
+                            <option value="rules">Rules-Based</option>
+                            <option value="ai">AI-Based (Coming Soon)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="center">Margin Center</label>
+                        <input type="text" id="center" name="center" value="NPM" required>
+                        <div class="help-text">e.g., NPM, PRIME_NYC, RUM</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="header">Header Account ID (Optional)</label>
+                        <input type="text" id="header" name="header" placeholder="e.g., HDR_A">
+                        <div class="help-text">Leave blank to analyze all accounts</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="csv_path">CSV Path</label>
+                        <input type="text" id="csv_path" name="csv_path" value="data/sample_summary.csv" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="out_csv">Output CSV Path</label>
+                        <input type="text" id="out_csv" name="out_csv" value="out/outliers_rules.csv" required>
+                    </div>
+
+                    <div class="advanced-params">
+                        <h4>Advanced Parameters</h4>
+                        
+                        <div class="param-row">
+                            <div class="form-group">
+                                <label for="abs_threshold">Absolute Threshold</label>
+                                <input type="number" id="abs_threshold" name="abs_threshold" value="5000000" step="1000">
+                            </div>
+                            <div class="form-group">
+                                <label for="pct_threshold">% Threshold</label>
+                                <input type="number" id="pct_threshold" name="pct_threshold" value="0.25" step="0.01">
+                            </div>
+                        </div>
+
+                        <div class="param-row">
+                            <div class="form-group">
+                                <label for="z_threshold">Z-Score Threshold</label>
+                                <input type="number" id="z_threshold" name="z_threshold" value="3.0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label for="top_n">Top N Results</label>
+                                <input type="number" id="top_n" name="top_n" value="20" min="1">
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="chat-area">
+                <div class="messages" id="messages">
+                    <div class="message bot">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            <strong>Welcome to the Margin Outlier Detection System</strong><br><br>
+                            I can help you identify headers with significant day-over-day swings in applied_req at the margin center level.<br><br>
+                            Configure your parameters in the sidebar and type your query below, or click "Run Analysis" to start with default settings.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="loading" id="loading">
+                    <div class="loader"></div>
+                    <p>Analyzing data...</p>
+                </div>
+
+                <div class="input-area">
+                    <form class="input-form" id="queryForm">
+                        <input type="text" id="query" name="query" placeholder="Type your query or click Run Analysis..." autocomplete="off">
+                        <button type="submit" class="submit-btn">Run Analysis</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const loadingDiv = document.getElementById('loading');
+        const queryForm = document.getElementById('queryForm');
+        const queryInput = document.getElementById('query');
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = isUser ? 'U' : '🤖';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.innerHTML = content;
+            
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        queryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const query = queryInput.value.trim();
+            const formData = new FormData(document.getElementById('configForm'));
+            
+            // Add query to form data
+            if (query) {
+                formData.append('query', query);
+                addMessage(query, true);
+            } else {
+                addMessage('Running outlier analysis with current parameters...', true);
+            }
+            
+            queryInput.value = '';
+            loadingDiv.classList.add('active');
+            
+            try {
+                const response = await fetch('/outlierv1', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                loadingDiv.classList.remove('active');
+                
+                if (data.success) {
+                    let resultHtml = `<strong>Analysis Complete</strong><br><br>`;
+                    resultHtml += `Center: <strong>${data.center}</strong><br>`;
+                    resultHtml += `Dates Analyzed: ${data.dates_analyzed || 'N/A'}<br>`;
+                    resultHtml += `Flagged Headers: <strong>${data.flagged_count || 0}</strong><br>`;
+                    resultHtml += `Total Headers: ${data.total_count || 0}<br><br>`;
+                    
+                    if (data.top_outliers && data.top_outliers.length > 0) {
+                        resultHtml += `<div class="result-table"><table>`;
+                        resultHtml += `<tr><th>Header</th><th>Delta</th><th>% Change</th><th>Z-Score</th><th>Flag</th></tr>`;
+                        
+                        data.top_outliers.slice(0, 10).forEach(row => {
+                            resultHtml += `<tr>`;
+                            resultHtml += `<td>${row.header}</td>`;
+                            resultHtml += `<td>${row.delta?.toFixed(2) || 'N/A'}</td>`;
+                            resultHtml += `<td>${row.pct_change ? (row.pct_change * 100).toFixed(2) + '%' : 'N/A'}</td>`;
+                            resultHtml += `<td>${row.z_score?.toFixed(2) || 'N/A'}</td>`;
+                            resultHtml += `<td class="${row.flag ? 'flag-true' : ''}">${row.flag ? '⚠️ Yes' : 'No'}</td>`;
+                            resultHtml += `</tr>`;
+                        });
+                        
+                        resultHtml += `</table></div>`;
+                    }
+                    
+                    resultHtml += `<br>Results exported to: <code>${data.output_file}</code>`;
+                    addMessage(resultHtml);
+                } else {
+                    addMessage(`<strong>Error:</strong> ${data.error || 'Unknown error occurred'}`, false);
+                }
+            } catch (error) {
+                loadingDiv.classList.remove('active');
+                addMessage(`<strong>Error:</strong> ${error.message}`, false);
+            }
+        });
+    </script>
+</body>
+</html>
