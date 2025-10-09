@@ -261,3 +261,158 @@ def download_file(filename):
             'success': False,
             'error': str(e)
         }), 500
+
+
+
+@app.route('/ml_outlierv1', methods=['GET', 'POST'])
+def ml_outlierv1():
+    """
+    ML-based outlier detection endpoint using Isolation Forest
+    """
+    if request.method == 'GET':
+        return jsonify({
+            'status': 'ready',
+            'message': 'Submit POST request with parameters for ML detection'
+        })
+    
+    try:
+        # Hardcoded paths for MVP
+        csv_path = 'data/summary_all_days.csv'
+        model_path = 'models/iforest_RUM.joblib'
+        out_csv = 'out/iforest_outliers.csv'
+        
+        # Extract parameters from form data
+        center = request.form.get('center', 'RUM')
+        action = request.form.get('action', 'ml-detect')
+        top_n = int(request.form.get('top_n', 20))
+        
+        # Determine SHAP parameters based on action
+        use_shap = action in ['ml-detect-shap', 'ml-detect-shap-advanced']
+        shap_top_k = 50 if action == 'ml-detect-shap-advanced' else 20
+        shap_dominance_threshold = 0.5
+        shap_print_top = 3
+        
+        # Validate paths
+        if not os.path.exists(csv_path):
+            return jsonify({
+                'success': False,
+                'error': f'CSV file not found: {csv_path}'
+            }), 400
+        
+        if not os.path.exists(model_path):
+            return jsonify({
+                'success': False,
+                'error': f'Model file not found: {model_path}. Please train the model first.'
+            }), 400
+        
+        # Ensure output directory exists
+        out_dir = os.path.dirname(out_csv)
+        if out_dir and not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        
+        print(f"\n{'='*60}")
+        print(f"🤖 ML DETECTION STARTED")
+        print(f"{'='*60}")
+        print(f"Model: {model_path}")
+        print(f"Data: {csv_path}")
+        print(f"Center: {center}")
+        print(f"Action: {action}")
+        print(f"Use SHAP: {use_shap}")
+        print(f"{'='*60}\n")
+        
+        # Import ML detector
+        try:
+            from v1.outlier_ml_detector import OutlierMLDetector
+        except ImportError as e:
+            return jsonify({
+                'success': False,
+                'error': f'Could not import ML detector: {str(e)}'
+            }), 500
+        
+        # Initialize detector
+        detector = OutlierMLDetector(model_path=model_path)
+        
+        # Run detection
+        result = detector.detect(
+            summary_csv=csv_path,
+            center=center,
+            top_n=top_n,
+            output_csv=out_csv,
+            use_shap=use_shap,
+            shap_top_k=shap_top_k if use_shap else None,
+            shap_dominance_threshold=shap_dominance_threshold if use_shap else None,
+            shap_print_top=shap_print_top if use_shap else None
+        )
+        
+        # Build response
+        response_data = {
+            'success': True,
+            'mode': 'ai',
+            'center': center,
+            'output_file': out_csv,
+            'action': action,
+            'csv_url': '/download/iforest_outliers.csv',
+            'model_used': os.path.basename(model_path),
+            'shap_enabled': use_shap
+        }
+        
+        # Parse CSV results
+        if os.path.exists(out_csv):
+            import csv
+            with open(out_csv, 'r') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+                
+                response_data['total_count'] = len(rows)
+                response_data['flagged_count'] = len(rows)  # All ML results are outliers
+                
+                # Get top outliers
+                top_outliers = []
+                for row in rows[:top_n]:
+                    outlier = {
+                        'header': row.get('HEADER', row.get('header_account_id', 'N/A')),
+                        'applied_t1': float(row.get('APPLIED_t1', 0)) if row.get('APPLIED_t1') else None,
+                        'applied_t': float(row.get('APPLIED_t', 0)) if row.get('APPLIED_t') else None,
+                        'delta': float(row.get('Δ', row.get('delta', 0))) if row.get('Δ', row.get('delta')) else None,
+                        'pct_change': float(row.get('%Δ', row.get('pct_change', 0))) if row.get('%Δ', row.get('pct_change')) else None,
+                        'anomaly_score': float(row.get('anomaly_score', 0)) if row.get('anomaly_score') else None,
+                        'flag': True  # All ML results are flagged
+                    }
+                    
+                    # Add SHAP values if available
+                    if use_shap:
+                        outlier['shap_top_features'] = []
+                        for i in range(1, 4):  # Top 3 SHAP features
+                            feat_key = f'shap_feat_{i}'
+                            val_key = f'shap_val_{i}'
+                            if feat_key in row and val_key in row:
+                                outlier['shap_top_features'].append({
+                                    'feature': row[feat_key],
+                                    'value': float(row[val_key]) if row[val_key] else 0
+                                })
+                    
+                    top_outliers.append(outlier)
+                
+                response_data['top_outliers'] = top_outliers
+        
+        print(f"\n{'='*60}")
+        print(f"✅ ML DETECTION COMPLETE")
+        print(f"Outliers detected: {response_data.get('flagged_count', 0)}")
+        print(f"{'='*60}\n")
+        
+        return jsonify(response_data)
+    
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid parameter value: {str(e)}'
+        }), 400
+    
+    except Exception as e:
+        import traceback
+        print("Error traceback:")
+        print(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': f'Internal error: {str(e)}'
+        }), 500
